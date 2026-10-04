@@ -160,9 +160,10 @@ export class HandTracker {
   ): void {
     const pinchedGrabs: Point[] = [];
     const seen = new Set<string>();
-    let primary:
-      | { point: Point; pinching: boolean; justPinched: boolean }
-      | null = null;
+    let primaryPoint: Point = { x: 0.5, y: 0.5 };
+    let primaryPinching = false;
+    let primaryJustPinched = false;
+    let hasPrimary = false;
 
     landmarks.forEach((lm, i) => {
       const label = labels[i] + "-" + i;
@@ -212,11 +213,11 @@ export class HandTracker {
       if (state.pinching) pinchedGrabs.push(state.grab);
 
       if (i === 0) {
-        primary = {
-          point: state.pointer,
-          pinching: state.pinching,
-          justPinched: !wasPinching && state.pinching,
-        };
+        primaryPoint = state.pointer;
+        primaryPinching = state.pinching;
+        primaryJustPinched =
+          !wasPinching && state.pinching;
+        hasPrimary = true;
       }
     });
 
@@ -265,12 +266,12 @@ export class HandTracker {
       this.prevZoomDist = d;
     }
 
-    if (primary) {
+    if (hasPrimary) {
       this.callbacks.onGameInput?.({
-        x: clamp01(primary.point.x),
-        y: clamp01(primary.point.y),
-        pinching: primary.pinching,
-        justPinched: primary.justPinched,
+        x: clamp01(primaryPoint.x),
+        y: clamp01(primaryPoint.y),
+        pinching: primaryPinching,
+        justPinched: primaryJustPinched,
         shield: pinchedGrabs.length >= 2,
         hands: landmarks.length,
       });
