@@ -12,56 +12,46 @@ import {
 } from "@/lib/orbScene";
 import {
   HandTracker,
-  type GameInput,
   type TrackerStatus,
 } from "@/lib/handTracker";
 
 type CameraState = "off" | "starting" | "on" | "error";
-type GamePhase = "idle" | "playing" | "gameover";
+type ApiState = "checking" | "online" | "offline";
 
-interface Enemy {
+type Job = {
   id: number;
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  r: number;
-  hp: number;
-  maxHp: number;
-  angle: number;
-  elite: boolean;
-}
+  title?: string;
+  company?: string;
+  location?: string;
+  type?: string;
+  salary?: string;
+  description?: string;
+  requirements?: string[] | string;
+  category_name?: string;
+  gender?: string;
+  posted?: string;
+  created_at?: string;
+};
 
-interface Beam {
-  x: number;
-  y: number;
-  life: number;
-}
+type ApiPayload = {
+  success?: boolean;
+  message?: string;
+  data?: unknown;
+  pagination?: {
+    page?: number;
+    limit?: number;
+    total?: number;
+    totalPages?: number;
+  };
+};
 
-interface Particle {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  life: number;
-  size: number;
-}
-
-interface GameModel {
-  enemies: Enemy[];
-  beams: Beam[];
-  particles: Particle[];
-  score: number;
-  lives: number;
-  combo: number;
-  wave: number;
-  shieldEnergy: number;
-  nextId: number;
-  lastSpawn: number;
-  lastShot: number;
-  startedAt: number;
-  lastHudUpdate: number;
-}
+type ResultView =
+  | { kind: "idle" }
+  | { kind: "health"; payload: ApiPayload }
+  | { kind: "categories"; items: Array<Record<string, unknown>> }
+  | { kind: "jobs"; jobs: Job[]; query: string }
+  | { kind: "job"; job: Job }
+  | { kind: "error"; message: string };
 
 const MODE_LABEL: Record<TrackerStatus["mode"], string> = {
   idle: "STANDBY",
@@ -69,127 +59,160 @@ const MODE_LABEL: Record<TrackerStatus["mode"], string> = {
   zoom: "ZOOM",
 };
 
-function freshGame(now = 0): GameModel {
-  return {
-    enemies: [],
-    beams: [],
-    particles: [],
-    score: 0,
-    lives: 5,
-    combo: 0,
-    wave: 1,
-    shieldEnergy: 100,
-    nextId: 1,
-    lastSpawn: now,
-    lastShot: 0,
-    startedAt: now,
-    lastHudUpdate: 0,
-  };
+const LOCATIONS = [
+  "thrissur",
+  "irinjalakuda",
+  "mannuthy",
+  "kozhikode",
+  "calicut",
+  "ernakulam",
+  "kochi",
+  "palakkad",
+  "malappuram",
+  "trivandrum",
+  "thiruvananthapuram",
+  "kannur",
+  "kasargod",
+  "kasaragod",
+  "kottayam",
+  "alappuzha",
+  "pathanamthitta",
+  "idukki",
+  "kollam",
+  "wayanad",
+];
+
+function capitalize(value: string): string {
+  return value
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
-function spawnEnemy(
-  game: GameModel,
-  width: number,
-  height: number,
-): void {
-  if (width < 50 || height < 50) return;
+function parseCommand(raw: string): URLSearchParams {
+  const original = raw.trim();
+  const lower = original.toLowerCase();
+  const params = new URLSearchParams();
 
-  const edge = Math.floor(Math.random() * 4);
-  const pad = 34;
-  let x = 0;
-  let y = 0;
-
-  if (edge === 0) {
-    x = Math.random() * width;
-    y = -pad;
-  } else if (edge === 1) {
-    x = width + pad;
-    y = Math.random() * height;
-  } else if (edge === 2) {
-    x = Math.random() * width;
-    y = height + pad;
-  } else {
-    x = -pad;
-    y = Math.random() * height;
+  if (
+    lower === "status" ||
+    lower.includes("api status") ||
+    lower.includes("health")
+  ) {
+    params.set("action", "health");
+    return params;
   }
 
-  const cx = width / 2;
-  const cy = height / 2;
-  const dx = cx - x;
-  const dy = cy - y;
-  const dist = Math.max(1, Math.hypot(dx, dy));
-  const elite = Math.random() < Math.min(0.32, 0.08 + game.wave * 0.025);
-  const speed =
-    38 +
-    game.wave * 6 +
-    Math.random() * 24 +
-    (elite ? 8 : 0);
+  if (lower.includes("categor")) {
+    params.set("action", "categories");
+    return params;
+  }
 
-  game.enemies.push({
-    id: game.nextId++,
-    x,
-    y,
-    vx: (dx / dist) * speed,
-    vy: (dy / dist) * speed,
-    r: elite ? 24 : 17,
-    hp: elite ? 2 : 1,
-    maxHp: elite ? 2 : 1,
-    angle: Math.random() * Math.PI * 2,
-    elite,
-  });
+  const jobIdMatch = lower.match(/\bjob\s*#?\s*(\d+)\b/);
+  if (jobIdMatch) {
+    params.set("action", "job");
+    params.set("id", jobIdMatch[1]);
+    return params;
+  }
+
+  params.set("action", "jobs");
+  params.set("limit", "15");
+
+  const location = LOCATIONS.find((item) =>
+    lower.includes(item),
+  );
+
+  if (location) {
+    params.set(
+      "location",
+      location === "calicut"
+        ? "Kozhikode"
+        : location === "kochi"
+          ? "Ernakulam"
+          : capitalize(location),
+    );
+  }
+
+  const noise = new Set([
+    "show",
+    "find",
+    "search",
+    "give",
+    "get",
+    "me",
+    "jobs",
+    "job",
+    "vacancy",
+    "vacancies",
+    "opening",
+    "openings",
+    "available",
+    "latest",
+    "live",
+    "in",
+    "at",
+    "near",
+    "please",
+    "triagull",
+    "ultron",
+    "for",
+  ]);
+
+  const words = lower
+    .replace(/[^a-z0-9\s+-]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((word) => !noise.has(word))
+    .filter((word) => !LOCATIONS.includes(word));
+
+  const search = words.join(" ").trim();
+  if (search) params.set("search", search);
+
+  return params;
 }
 
-function addBurst(
-  game: GameModel,
-  x: number,
-  y: number,
-  amount: number,
-): void {
-  for (let i = 0; i < amount; i += 1) {
-    const angle = Math.random() * Math.PI * 2;
-    const speed = 45 + Math.random() * 150;
-    game.particles.push({
-      x,
-      y,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
-      life: 0.35 + Math.random() * 0.45,
-      size: 1.5 + Math.random() * 3,
-    });
+function summarizeJobs(jobs: Job[], query: string): string {
+  if (!jobs.length) {
+    return "No matching vacancies found in Triagull Jobs.";
   }
+
+  const first = jobs[0];
+  return (
+    jobs.length +
+    " vacancies found for " +
+    (query || "your search") +
+    ". First result is " +
+    (first.title || "a vacancy") +
+    (first.location ? " in " + first.location : "") +
+    "."
+  );
 }
 
 export default function JarvisOrb() {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
-  const gameCanvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<OrbSceneApi | null>(null);
   const trackerRef = useRef<HandTracker | null>(null);
-  const gameRef = useRef<GameModel>(freshGame());
-  const gameActiveRef = useRef(false);
-  const fireShotRef = useRef<() => void>(() => {});
-  const aimRef = useRef<GameInput>({
-    x: 0.5,
-    y: 0.5,
-    pinching: false,
-    justPinched: false,
-    shield: false,
-    hands: 0,
-  });
 
-  const [camera, setCamera] = useState<CameraState>("off");
+  const [camera, setCamera] =
+    useState<CameraState>("off");
   const [status, setStatus] = useState<TrackerStatus>({
     hands: 0,
     mode: "idle",
   });
-  const [error, setError] = useState<string | null>(null);
-  const [gamePhase, setGamePhase] = useState<GamePhase>("idle");
-  const [score, setScore] = useState(0);
-  const [lives, setLives] = useState(5);
-  const [combo, setCombo] = useState(0);
-  const [wave, setWave] = useState(1);
-  const [shieldEnergy, setShieldEnergy] = useState(100);
+  const [cameraError, setCameraError] =
+    useState<string | null>(null);
+
+  const [apiState, setApiState] =
+    useState<ApiState>("checking");
+  const [command, setCommand] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [result, setResult] = useState<ResultView>({
+    kind: "idle",
+  });
 
   useEffect(() => {
     const container = containerRef.current;
@@ -206,19 +229,34 @@ export default function JarvisOrb() {
     };
   }, []);
 
+  const checkApi = useCallback(async () => {
+    try {
+      const response = await fetch(
+        "/api/triagull?action=health",
+        { cache: "no-store" },
+      );
+      const payload = (await response.json()) as ApiPayload;
+      setApiState(
+        response.ok && payload.success !== false
+          ? "online"
+          : "offline",
+      );
+      return payload;
+    } catch {
+      setApiState("offline");
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    void checkApi();
+  }, [checkApi]);
+
   const stopGestures = useCallback(() => {
     trackerRef.current?.stop();
     trackerRef.current = null;
     setCamera("off");
     setStatus({ hands: 0, mode: "idle" });
-    aimRef.current = {
-      x: 0.5,
-      y: 0.5,
-      pinching: false,
-      justPinched: false,
-      shield: false,
-      hands: 0,
-    };
   }, []);
 
   const startGestures = useCallback(async () => {
@@ -227,30 +265,14 @@ export default function JarvisOrb() {
     if (!video || !overlay || trackerRef.current) return;
 
     setCamera("starting");
-    setError(null);
+    setCameraError(null);
 
     const tracker = new HandTracker(video, overlay, {
-      onRotate: (dt, dp) => {
-        if (!gameActiveRef.current) {
-          sceneRef.current?.rotateBy(dt, dp);
-        }
-      },
-      onZoom: (factor) => {
-        if (!gameActiveRef.current) {
-          sceneRef.current?.zoomBy(factor);
-        }
-      },
+      onRotate: (dt, dp) =>
+        sceneRef.current?.rotateBy(dt, dp),
+      onZoom: (factor) =>
+        sceneRef.current?.zoomBy(factor),
       onStatus: setStatus,
-      onGameInput: (input) => {
-        aimRef.current = input;
-        if (
-          gameActiveRef.current &&
-          input.justPinched &&
-          !input.shield
-        ) {
-          fireShotRef.current();
-        }
-      },
     });
 
     trackerRef.current = tracker;
@@ -262,7 +284,7 @@ export default function JarvisOrb() {
       trackerRef.current = null;
       tracker.stop();
       setCamera("error");
-      setError(
+      setCameraError(
         err instanceof DOMException &&
           err.name === "NotAllowedError"
           ? "CAMERA ACCESS DENIED"
@@ -276,395 +298,194 @@ export default function JarvisOrb() {
     else void startGestures();
   }, [startGestures, stopGestures]);
 
-  const fireShot = useCallback(() => {
-    if (!gameActiveRef.current) return;
-
-    const canvas = gameCanvasRef.current;
-    if (!canvas) return;
-
-    const width = canvas.clientWidth;
-    const height = canvas.clientHeight;
-    if (!width || !height) return;
-
-    const game = gameRef.current;
-    const now = performance.now();
-    if (now - game.lastShot < 135) return;
-    game.lastShot = now;
-
-    const x = aimRef.current.x * width;
-    const y = aimRef.current.y * height;
-
-    game.beams.push({ x, y, life: 0.12 });
-
-    let bestIndex = -1;
-    let bestDistance = Number.POSITIVE_INFINITY;
-
-    game.enemies.forEach((enemy, index) => {
-      const distance = Math.hypot(enemy.x - x, enemy.y - y);
-      const lockRadius = enemy.r + 34;
-      if (distance <= lockRadius && distance < bestDistance) {
-        bestDistance = distance;
-        bestIndex = index;
-      }
-    });
-
-    if (bestIndex >= 0) {
-      const enemy = game.enemies[bestIndex];
-      enemy.hp -= 1;
-      addBurst(game, enemy.x, enemy.y, enemy.hp <= 0 ? 18 : 8);
-
-      if (enemy.hp <= 0) {
-        game.enemies.splice(bestIndex, 1);
-        game.combo += 1;
-        const gain =
-          100 +
-          Math.min(500, game.combo * 20) +
-          (enemy.elite ? 180 : 0);
-        game.score += gain;
-        setScore(game.score);
-        setCombo(game.combo);
-      } else {
-        game.score += 25;
-        setScore(game.score);
-      }
-    } else {
-      game.combo = 0;
-      setCombo(0);
+  const speak = useCallback((text: string) => {
+    if (
+      typeof window === "undefined" ||
+      !("speechSynthesis" in window)
+    ) {
+      return;
     }
+
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "en-IN";
+    utterance.rate = 1;
+    window.speechSynthesis.speak(utterance);
   }, []);
 
-  fireShotRef.current = fireShot;
+  const runCommand = useCallback(
+    async (raw?: string, speakResult = false) => {
+      const input = (raw ?? command).trim();
+      if (!input || loading) return;
 
-  const startGame = useCallback(() => {
-    const now = performance.now();
-    gameRef.current = freshGame(now);
-    gameActiveRef.current = true;
-    setGamePhase("playing");
-    setScore(0);
-    setLives(5);
-    setCombo(0);
-    setWave(1);
-    setShieldEnergy(100);
-    sceneRef.current?.resetView();
+      setCommand(input);
+      setLoading(true);
 
-    if (!trackerRef.current) {
-      void startGestures();
-    }
-  }, [startGestures]);
+      try {
+        const params = parseCommand(input);
+        const response = await fetch(
+          "/api/triagull?" + params.toString(),
+          { cache: "no-store" },
+        );
+        const payload = (await response.json()) as ApiPayload;
 
-  const stopGame = useCallback(() => {
-    gameActiveRef.current = false;
-    gameRef.current = freshGame();
-    setGamePhase("idle");
-    setScore(0);
-    setLives(5);
-    setCombo(0);
-    setWave(1);
-    setShieldEnergy(100);
-  }, []);
+        if (!response.ok || payload.success === false) {
+          const message =
+            payload.message || "Triagull API request failed";
+          setResult({ kind: "error", message });
+          if (speakResult) speak(message);
+          return;
+        }
 
-  const handlePointerMove = useCallback(
-    (event: React.PointerEvent<HTMLCanvasElement>) => {
-      if (!gameActiveRef.current) return;
-      const rect = event.currentTarget.getBoundingClientRect();
-      aimRef.current = {
-        ...aimRef.current,
-        x: Math.max(
-          0,
-          Math.min(1, (event.clientX - rect.left) / rect.width),
-        ),
-        y: Math.max(
-          0,
-          Math.min(1, (event.clientY - rect.top) / rect.height),
-        ),
+        const action = params.get("action");
+
+        if (action === "health") {
+          setApiState("online");
+          setResult({ kind: "health", payload });
+          if (speakResult) {
+            speak("Triagull Jobs API is online.");
+          }
+          return;
+        }
+
+        if (action === "categories") {
+          const items = Array.isArray(payload.data)
+            ? (payload.data as Array<Record<string, unknown>>)
+            : [];
+          setResult({ kind: "categories", items });
+          if (speakResult) {
+            speak(items.length + " job categories found.");
+          }
+          return;
+        }
+
+        if (action === "job") {
+          const job = (payload.data || {}) as Job;
+          setResult({ kind: "job", job });
+          if (speakResult) {
+            speak(
+              (job.title || "Job") +
+                (job.location
+                  ? " in " + job.location
+                  : ""),
+            );
+          }
+          return;
+        }
+
+        const jobs = Array.isArray(payload.data)
+          ? (payload.data as Job[]).slice(0, 15)
+          : [];
+        setResult({
+          kind: "jobs",
+          jobs,
+          query: input,
+        });
+
+        if (speakResult) {
+          speak(summarizeJobs(jobs, input));
+        }
+      } catch {
+        const message = "Unable to connect to Triagull Jobs API.";
+        setApiState("offline");
+        setResult({ kind: "error", message });
+        if (speakResult) speak(message);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [command, loading, speak],
+  );
+
+  const startVoiceCommand = useCallback(() => {
+    if (typeof window === "undefined") return;
+
+    const speechWindow = window as typeof window & {
+      SpeechRecognition?: new () => {
+        lang: string;
+        interimResults: boolean;
+        continuous: boolean;
+        start(): void;
+        stop(): void;
+        onresult:
+          | ((event: {
+              results: {
+                [index: number]: {
+                  [index: number]: {
+                    transcript: string;
+                  };
+                };
+              };
+            }) => void)
+          | null;
+        onerror: (() => void) | null;
+        onend: (() => void) | null;
       };
-    },
-    [],
-  );
-
-  const handlePointerDown = useCallback(
-    (event: React.PointerEvent<HTMLCanvasElement>) => {
-      handlePointerMove(event);
-      fireShot();
-    },
-    [fireShot, handlePointerMove],
-  );
-
-  useEffect(() => {
-    const canvas = gameCanvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    let rafId = 0;
-    let last = performance.now();
-
-    const frame = (now: number) => {
-      const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
-      last = now;
-
-      const rect = canvas.getBoundingClientRect();
-      const width = Math.max(1, rect.width);
-      const height = Math.max(1, rect.height);
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const targetWidth = Math.floor(width * dpr);
-      const targetHeight = Math.floor(height * dpr);
-
-      if (
-        canvas.width !== targetWidth ||
-        canvas.height !== targetHeight
-      ) {
-        canvas.width = targetWidth;
-        canvas.height = targetHeight;
-      }
-
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, width, height);
-
-      const game = gameRef.current;
-
-      if (gameActiveRef.current) {
-        const nextWave =
-          1 + Math.floor((now - game.startedAt) / 15000);
-        if (nextWave !== game.wave) {
-          game.wave = nextWave;
-          setWave(nextWave);
-        }
-
-        const spawnEvery = Math.max(
-          360,
-          1050 - game.wave * 70,
-        );
-        if (
-          now - game.lastSpawn >= spawnEvery &&
-          game.enemies.length < 28
-        ) {
-          game.lastSpawn = now;
-          spawnEnemy(game, width, height);
-        }
-
-        const shielding =
-          aimRef.current.shield && game.shieldEnergy > 0;
-
-        if (shielding) {
-          game.shieldEnergy = Math.max(
-            0,
-            game.shieldEnergy - 34 * dt,
-          );
-        } else {
-          game.shieldEnergy = Math.min(
-            100,
-            game.shieldEnergy + 18 * dt,
-          );
-        }
-
-        const cx = width / 2;
-        const cy = height / 2;
-        const coreRadius = Math.max(
-          70,
-          Math.min(width, height) * 0.105,
-        );
-
-        for (let i = game.enemies.length - 1; i >= 0; i -= 1) {
-          const enemy = game.enemies[i];
-          enemy.x += enemy.vx * dt;
-          enemy.y += enemy.vy * dt;
-          enemy.angle += dt * (enemy.elite ? 2.8 : 4.1);
-
-          if (
-            Math.hypot(enemy.x - cx, enemy.y - cy) <=
-            coreRadius
-          ) {
-            game.enemies.splice(i, 1);
-            addBurst(game, enemy.x, enemy.y, 12);
-
-            if (shielding) {
-              game.shieldEnergy = Math.max(
-                0,
-                game.shieldEnergy - (enemy.elite ? 22 : 12),
-              );
-              game.score += enemy.elite ? 80 : 40;
-              setScore(game.score);
-            } else {
-              game.lives -= 1;
-              game.combo = 0;
-              setLives(game.lives);
-              setCombo(0);
-
-              if (game.lives <= 0) {
-                gameActiveRef.current = false;
-                setGamePhase("gameover");
-              }
-            }
-          }
-        }
-
-        for (const beam of game.beams) {
-          beam.life -= dt;
-        }
-        game.beams = game.beams.filter(
-          (beam) => beam.life > 0,
-        );
-
-        for (const particle of game.particles) {
-          particle.x += particle.vx * dt;
-          particle.y += particle.vy * dt;
-          particle.vx *= 0.97;
-          particle.vy *= 0.97;
-          particle.life -= dt;
-        }
-        game.particles = game.particles.filter(
-          (particle) => particle.life > 0,
-        );
-
-        if (now - game.lastHudUpdate > 180) {
-          game.lastHudUpdate = now;
-          setShieldEnergy(Math.round(game.shieldEnergy));
-        }
-
-        if (shielding) {
-          ctx.save();
-          ctx.strokeStyle = "rgba(102,221,255,0.9)";
-          ctx.lineWidth = 3;
-          ctx.shadowBlur = 20;
-          ctx.shadowColor = "#66ddff";
-          ctx.beginPath();
-          ctx.arc(
-            cx,
-            cy,
-            coreRadius + 22 + Math.sin(now * 0.01) * 4,
-            0,
-            Math.PI * 2,
-          );
-          ctx.stroke();
-          ctx.restore();
-        }
-
-        for (const enemy of game.enemies) {
-          ctx.save();
-          ctx.translate(enemy.x, enemy.y);
-          ctx.rotate(enemy.angle);
-          ctx.strokeStyle = enemy.elite
-            ? "#ff5544"
-            : "#ffb13b";
-          ctx.fillStyle = enemy.elite
-            ? "rgba(255,70,50,0.12)"
-            : "rgba(255,177,59,0.1)";
-          ctx.lineWidth = enemy.elite ? 2.5 : 1.5;
-          ctx.shadowBlur = enemy.elite ? 18 : 10;
-          ctx.shadowColor = enemy.elite
-            ? "#ff5533"
-            : "#ffaa30";
-
-          ctx.beginPath();
-          ctx.moveTo(0, -enemy.r);
-          ctx.lineTo(enemy.r, 0);
-          ctx.lineTo(0, enemy.r);
-          ctx.lineTo(-enemy.r, 0);
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
-
-          ctx.rotate(-enemy.angle * 1.7);
-          ctx.beginPath();
-          ctx.arc(0, 0, enemy.r * 0.55, 0, Math.PI * 2);
-          ctx.stroke();
-
-          if (enemy.maxHp > 1) {
-            ctx.shadowBlur = 0;
-            ctx.fillStyle = "rgba(255,255,255,0.25)";
-            ctx.fillRect(
-              -enemy.r,
-              enemy.r + 7,
-              enemy.r * 2,
-              3,
-            );
-            ctx.fillStyle = "#ff6655";
-            ctx.fillRect(
-              -enemy.r,
-              enemy.r + 7,
-              enemy.r * 2 * (enemy.hp / enemy.maxHp),
-              3,
-            );
-          }
-          ctx.restore();
-        }
-
-        for (const beam of game.beams) {
-          const alpha = Math.max(0, beam.life / 0.12);
-          ctx.save();
-          ctx.strokeStyle =
-            "rgba(255,210,120," + alpha + ")";
-          ctx.lineWidth = 2 + alpha * 3;
-          ctx.shadowBlur = 18;
-          ctx.shadowColor = "#ffb13b";
-          ctx.beginPath();
-          ctx.moveTo(cx, cy);
-          ctx.lineTo(beam.x, beam.y);
-          ctx.stroke();
-          ctx.restore();
-        }
-
-        for (const particle of game.particles) {
-          const alpha = Math.max(
-            0,
-            Math.min(1, particle.life / 0.45),
-          );
-          ctx.fillStyle =
-            "rgba(255,180,70," + alpha + ")";
-          ctx.beginPath();
-          ctx.arc(
-            particle.x,
-            particle.y,
-            particle.size,
-            0,
-            Math.PI * 2,
-          );
-          ctx.fill();
-        }
-
-        const aimX = aimRef.current.x * width;
-        const aimY = aimRef.current.y * height;
-        const locked = game.enemies.some(
-          (enemy) =>
-            Math.hypot(enemy.x - aimX, enemy.y - aimY) <=
-            enemy.r + 34,
-        );
-
-        ctx.save();
-        ctx.translate(aimX, aimY);
-        ctx.strokeStyle = locked ? "#fff1b0" : "#ffaa30";
-        ctx.lineWidth = locked ? 2.5 : 1.5;
-        ctx.shadowBlur = locked ? 18 : 9;
-        ctx.shadowColor = locked ? "#fff1b0" : "#ffaa30";
-        ctx.beginPath();
-        ctx.arc(0, 0, locked ? 22 : 17, 0, Math.PI * 2);
-        ctx.moveTo(-30, 0);
-        ctx.lineTo(-10, 0);
-        ctx.moveTo(30, 0);
-        ctx.lineTo(10, 0);
-        ctx.moveTo(0, -30);
-        ctx.lineTo(0, -10);
-        ctx.moveTo(0, 30);
-        ctx.lineTo(0, 10);
-        ctx.stroke();
-
-        if (locked) {
-          ctx.fillStyle = "#fff1b0";
-          ctx.beginPath();
-          ctx.arc(0, 0, 3, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        ctx.restore();
-      }
-
-      rafId = requestAnimationFrame(frame);
+      webkitSpeechRecognition?: new () => {
+        lang: string;
+        interimResults: boolean;
+        continuous: boolean;
+        start(): void;
+        stop(): void;
+        onresult:
+          | ((event: {
+              results: {
+                [index: number]: {
+                  [index: number]: {
+                    transcript: string;
+                  };
+                };
+              };
+            }) => void)
+          | null;
+        onerror: (() => void) | null;
+        onend: (() => void) | null;
+      };
     };
 
-    rafId = requestAnimationFrame(frame);
-    return () => cancelAnimationFrame(rafId);
-  }, []);
+    const Recognition =
+      speechWindow.SpeechRecognition ||
+      speechWindow.webkitSpeechRecognition;
+
+    if (!Recognition) {
+      setResult({
+        kind: "error",
+        message:
+          "Voice command is not supported in this browser. Use the command box.",
+      });
+      return;
+    }
+
+    const recognition = new Recognition();
+    recognition.lang = "en-IN";
+    recognition.interimResults = false;
+    recognition.continuous = false;
+
+    recognition.onresult = (event) => {
+      const transcript =
+        event.results?.[0]?.[0]?.transcript?.trim() || "";
+      if (transcript) {
+        setCommand(transcript);
+        void runCommand(transcript, true);
+      }
+    };
+
+    recognition.onerror = () => {
+      setListening(false);
+      setResult({
+        kind: "error",
+        message:
+          "Voice recognition failed. Try again or type the command.",
+      });
+    };
+
+    recognition.onend = () => {
+      setListening(false);
+    };
+
+    setListening(true);
+    recognition.start();
+  }, [runCommand]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -675,34 +496,30 @@ export default function JarvisOrb() {
         return;
       }
 
-      if (event.code === "Space" && gameActiveRef.current) {
-        event.preventDefault();
-        fireShotRef.current();
-        return;
-      }
-
       switch (event.key) {
         case "+":
         case "=":
-          if (!gameActiveRef.current) {
-            sceneRef.current?.zoomIn();
-          }
+          sceneRef.current?.zoomIn();
           break;
         case "-":
         case "_":
-          if (!gameActiveRef.current) {
-            sceneRef.current?.zoomOut();
-          }
+          sceneRef.current?.zoomOut();
           break;
         case "r":
         case "R":
-          if (!gameActiveRef.current) {
-            sceneRef.current?.resetView();
-          }
+          sceneRef.current?.resetView();
           break;
         case "g":
         case "G":
           toggleGestures();
+          break;
+        case "/":
+          event.preventDefault();
+          document
+            .querySelector<HTMLInputElement>(
+              ".triagull-command-input",
+            )
+            ?.focus();
           break;
       }
     };
@@ -712,21 +529,10 @@ export default function JarvisOrb() {
   }, [toggleGestures]);
 
   const cameraOn = camera === "on";
-  const gameActive = gamePhase === "playing";
 
   return (
     <>
       <div ref={containerRef} className="orb-root" />
-
-      <canvas
-        ref={gameCanvasRef}
-        className={
-          "game-canvas" + (gameActive ? " active" : "")
-        }
-        onPointerMove={handlePointerMove}
-        onPointerDown={handlePointerDown}
-        aria-label="ULTRON Core Defense game field"
-      />
 
       <div className="overlay-vignette" />
       <div className="overlay-grain" />
@@ -735,114 +541,204 @@ export default function JarvisOrb() {
       <div className="hud hud-title">
         U.L.T.R.O.N.
         <div className="hud-subtitle">
-          CORE DEFENSE // GESTURE COMBAT
+          TRIAGULL JOBS // LIVE API COMMAND CENTER
         </div>
       </div>
 
-      {gamePhase !== "idle" && (
-        <div className="hud game-stats">
+      <div className="hud api-status">
+        <span
+          className={
+            "api-dot " +
+            (apiState === "online"
+              ? "online"
+              : apiState === "offline"
+                ? "offline"
+                : "checking")
+          }
+        />
+        TRIAGULL API{" "}
+        {apiState === "online"
+          ? "ONLINE"
+          : apiState === "offline"
+            ? "OFFLINE"
+            : "CHECKING"}
+      </div>
+
+      <section className="hud assistant-panel">
+        <div className="assistant-heading">
           <div>
-            <span>SCORE</span>
-            <strong>{score.toLocaleString()}</strong>
-          </div>
-          <div>
-            <span>WAVE</span>
-            <strong>{wave}</strong>
-          </div>
-          <div>
-            <span>CORE</span>
-            <strong>{"◆".repeat(Math.max(0, lives))}</strong>
-          </div>
-          <div>
-            <span>COMBO</span>
-            <strong>x{combo}</strong>
-          </div>
-          <div className="shield-stat">
-            <span>SHIELD</span>
-            <div className="shield-track">
-              <div
-                className="shield-fill"
-                style={{ width: shieldEnergy + "%" }}
-              />
+            <div className="assistant-kicker">
+              LIVE RECRUITMENT DATA
             </div>
+            <h1>TRIAGULL COMMAND</h1>
           </div>
+          <button
+            type="button"
+            className={
+              "voice-btn" + (listening ? " listening" : "")
+            }
+            onClick={startVoiceCommand}
+            disabled={loading || listening}
+            aria-label="Start voice command"
+          >
+            {listening ? "LISTENING…" : "MIC"}
+          </button>
         </div>
-      )}
 
-      {gamePhase === "idle" && (
-        <div className="hud game-card">
-          <div className="game-kicker">
-            HAND GESTURE GAME
-          </div>
-          <div className="game-name">
-            ULTRON // CORE DEFENSE
-          </div>
-          <div className="game-copy">
-            Move your hand to aim. Pinch to fire.
-            Pinch with both hands to activate the core shield.
-          </div>
+        <form
+          className="command-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void runCommand();
+          }}
+        >
+          <input
+            className="triagull-command-input"
+            value={command}
+            onChange={(event) =>
+              setCommand(event.target.value)
+            }
+            placeholder="e.g. Thrissur accountant jobs"
+            autoComplete="off"
+          />
           <button
-            type="button"
-            className="game-primary-btn"
-            onClick={startGame}
+            type="submit"
+            className="command-submit"
+            disabled={loading || !command.trim()}
           >
-            START DEFENSE
+            {loading ? "SCANNING…" : "EXECUTE"}
           </button>
-          <div className="game-mini">
-            Mouse/tap also works as backup controls.
-          </div>
-        </div>
-      )}
+        </form>
 
-      {gamePhase === "gameover" && (
-        <div className="hud game-card gameover-card">
-          <div className="game-kicker">CORE BREACHED</div>
-          <div className="game-name">
-            FINAL SCORE {score.toLocaleString()}
-          </div>
-          <div className="game-copy">
-            Wave {wave} reached · Best combo x{combo}
-          </div>
-          <button
-            type="button"
-            className="game-primary-btn"
-            onClick={startGame}
-          >
-            RESTART DEFENSE
-          </button>
-          <button
-            type="button"
-            className="game-secondary-btn"
-            onClick={stopGame}
-          >
-            EXIT GAME
-          </button>
+        <div className="quick-commands">
+          {[
+            "Thrissur accountant jobs",
+            "Telecaller Thrissur",
+            "Categories",
+            "API status",
+          ].map((item) => (
+            <button
+              type="button"
+              key={item}
+              onClick={() => {
+                setCommand(item);
+                void runCommand(item);
+              }}
+              disabled={loading}
+            >
+              {item}
+            </button>
+          ))}
         </div>
-      )}
+
+        <div className="assistant-results">
+          {result.kind === "idle" && (
+            <div className="assistant-empty">
+              <strong>READY.</strong>
+              <span>
+                Ask ULTRON to search live Triagull Jobs
+                vacancies.
+              </span>
+              <span>
+                Commands: location + role, categories,
+                API status, or job ID.
+              </span>
+            </div>
+          )}
+
+          {result.kind === "error" && (
+            <div className="assistant-error">
+              {result.message}
+            </div>
+          )}
+
+          {result.kind === "health" && (
+            <div className="health-result">
+              <strong>API LINK ESTABLISHED</strong>
+              <span>
+                {result.payload.message ||
+                  "Triagull Jobs API is online."}
+              </span>
+            </div>
+          )}
+
+          {result.kind === "categories" && (
+            <div className="categories-grid">
+              {result.items.length ? (
+                result.items.slice(0, 30).map((item, index) => {
+                  const label =
+                    String(
+                      item.name ??
+                        item.category_name ??
+                        item.title ??
+                        "Category " + (index + 1),
+                    );
+                  return (
+                    <button
+                      type="button"
+                      key={String(item.id ?? label ?? index)}
+                      onClick={() => {
+                        const next = label + " jobs";
+                        setCommand(next);
+                        void runCommand(next);
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })
+              ) : (
+                <div className="assistant-empty">
+                  No categories returned.
+                </div>
+              )}
+            </div>
+          )}
+
+          {result.kind === "job" && (
+            <JobCard job={result.job} />
+          )}
+
+          {result.kind === "jobs" && (
+            <>
+              <div className="results-summary">
+                <strong>
+                  {result.jobs.length} RESULTS
+                </strong>
+                <span>{result.query}</span>
+              </div>
+              <div className="job-list">
+                {result.jobs.length ? (
+                  result.jobs.map((job) => (
+                    <JobCard key={job.id} job={job} compact />
+                  ))
+                ) : (
+                  <div className="assistant-empty">
+                    No matching live vacancies found.
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </section>
 
       <div className="hud hud-hint">
-        {gameActive ? (
-          <>
-            <div>
-              <span className="key">MOVE HAND</span> aim&nbsp;&nbsp;
-              <span className="key">PINCH</span> fire
-            </div>
-            <div>
-              <span className="key">BOTH PINCH</span> shield&nbsp;&nbsp;
-              <span className="key">SPACE / TAP</span> backup fire
-            </div>
-          </>
+        <div>
+          <span className="key">DRAG</span> spin&nbsp;&nbsp;
+          <span className="key">SCROLL</span> zoom
+        </div>
+        {cameraOn ? (
+          <div>
+            <span className="key">PINCH + MOVE</span>
+            spin&nbsp;&nbsp;
+            <span className="key">BOTH PINCH</span> zoom
+          </div>
         ) : (
-          <>
-            <div>
-              <span className="key">DRAG</span> spin&nbsp;&nbsp;
-              <span className="key">SCROLL</span> zoom
-            </div>
-            <div>
-              <span className="key">G</span> hand gestures&nbsp;&nbsp;
-              <span className="key">R</span> reset
-            </div>
-          </>
+          <div>
+            <span className="key">G</span> gestures&nbsp;&nbsp;
+            <span className="key">/</span> command
+          </div>
         )}
       </div>
 
@@ -866,22 +762,18 @@ export default function JarvisOrb() {
           />
           <div className="camera-status">
             {status.hands > 0
-              ? gameActive
-                ? status.hands +
-                  " HAND" +
-                  (status.hands > 1 ? "S" : "") +
-                  " · " +
-                  (status.hands > 1 ? "SHIELD READY" : "TARGETING")
-                : status.hands +
-                  " HAND" +
-                  (status.hands > 1 ? "S" : "") +
-                  " · " +
-                  MODE_LABEL[status.mode]
+              ? status.hands +
+                " HAND" +
+                (status.hands > 1 ? "S" : "") +
+                " · " +
+                MODE_LABEL[status.mode]
               : "SHOW HANDS"}
           </div>
         </div>
 
-        {error && <div className="hud-error">{error}</div>}
+        {cameraError && (
+          <div className="hud-error">{cameraError}</div>
+        )}
 
         <div className="hud-row">
           <button
@@ -894,48 +786,88 @@ export default function JarvisOrb() {
             {camera === "starting"
               ? "INITIALIZING…"
               : cameraOn
-                ? "CAMERA ON"
-                : "CAMERA OFF"}
+                ? "GESTURES ON"
+                : "GESTURES OFF"}
           </button>
-          {gameActive && (
-            <button
-              type="button"
-              className="hud-btn danger"
-              onClick={stopGame}
-            >
-              END GAME
-            </button>
-          )}
         </div>
 
-        {!gameActive && gamePhase === "idle" && (
-          <div className="hud-row">
-            <button
-              type="button"
-              className="hud-btn"
-              onClick={() => sceneRef.current?.zoomIn()}
-              aria-label="Zoom in"
-            >
-              +
-            </button>
-            <button
-              type="button"
-              className="hud-btn"
-              onClick={() => sceneRef.current?.zoomOut()}
-              aria-label="Zoom out"
-            >
-              −
-            </button>
-            <button
-              type="button"
-              className="hud-btn"
-              onClick={() => sceneRef.current?.resetView()}
-            >
-              RESET
-            </button>
-          </div>
-        )}
+        <div className="hud-row">
+          <button
+            type="button"
+            className="hud-btn"
+            onClick={() => sceneRef.current?.zoomIn()}
+            aria-label="Zoom in"
+          >
+            +
+          </button>
+          <button
+            type="button"
+            className="hud-btn"
+            onClick={() => sceneRef.current?.zoomOut()}
+            aria-label="Zoom out"
+          >
+            −
+          </button>
+          <button
+            type="button"
+            className="hud-btn"
+            onClick={() => sceneRef.current?.resetView()}
+          >
+            RESET
+          </button>
+        </div>
       </div>
     </>
+  );
+}
+
+function JobCard({
+  job,
+  compact = false,
+}: {
+  job: Job;
+  compact?: boolean;
+}) {
+  const requirements = Array.isArray(job.requirements)
+    ? job.requirements.join(", ")
+    : job.requirements || "";
+
+  return (
+    <article
+      className={"job-card" + (compact ? " compact" : "")}
+    >
+      <div className="job-card-top">
+        <div>
+          <span className="job-id">JOB #{job.id}</span>
+          <h2>{job.title || "Untitled vacancy"}</h2>
+        </div>
+        {job.category_name && (
+          <span className="job-category">
+            {job.category_name}
+          </span>
+        )}
+      </div>
+
+      <div className="job-meta">
+        {job.location && <span>{job.location}</span>}
+        {job.type && <span>{job.type}</span>}
+        {job.gender && <span>{job.gender}</span>}
+        {job.posted && <span>{job.posted}</span>}
+      </div>
+
+      {job.salary && (
+        <div className="job-salary">{job.salary}</div>
+      )}
+
+      {!compact && job.description && (
+        <p>{job.description}</p>
+      )}
+
+      {!compact && requirements && (
+        <p className="job-requirements">
+          <strong>Requirements:</strong> {requirements}
+        </p>
+      )}
+    </article>
   );
 }
