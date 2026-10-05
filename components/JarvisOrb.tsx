@@ -172,6 +172,57 @@ function parseCommand(raw: string): URLSearchParams {
   return params;
 }
 
+function normalizeJobWord(value: string): string {
+  const word = value.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (word.startsWith("account")) return "account";
+  if (word.startsWith("tele")) return "tele";
+  if (word.startsWith("reception")) return "reception";
+  if (word.startsWith("market")) return "market";
+  if (word.startsWith("sale")) return "sale";
+  if (word.startsWith("nurs")) return "nurs";
+  if (word.startsWith("develop")) return "develop";
+  return word;
+}
+
+function filterJobs(jobs: Job[], params: URLSearchParams): Job[] {
+  const location = (params.get("location") || "").toLowerCase().trim();
+  const search = (params.get("search") || "").toLowerCase().trim();
+
+  const searchTokens = search
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(normalizeJobWord);
+
+  return jobs.filter((job) => {
+    const locationText = (job.location || "").toLowerCase();
+    const haystack = [
+      job.title,
+      job.category_name,
+      job.description,
+      job.company,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    const normalizedHaystack = haystack
+      .split(/\s+/)
+      .map(normalizeJobWord)
+      .join(" ");
+
+    const locationMatches =
+      !location || locationText.includes(location);
+
+    const searchMatches =
+      !searchTokens.length ||
+      searchTokens.every((token) =>
+        normalizedHaystack.includes(token),
+      );
+
+    return locationMatches && searchMatches;
+  });
+}
+
 function summarizeJobs(jobs: Job[], query: string): string {
   if (!jobs.length) {
     return "No matching vacancies found in Triagull Jobs.";
@@ -373,9 +424,10 @@ export default function JarvisOrb() {
           return;
         }
 
-        const jobs = Array.isArray(payload.data)
-          ? (payload.data as Job[]).slice(0, 15)
+        const allJobs = Array.isArray(payload.data)
+          ? (payload.data as Job[])
           : [];
+        const jobs = filterJobs(allJobs, params).slice(0, 15);
         setResult({
           kind: "jobs",
           jobs,
