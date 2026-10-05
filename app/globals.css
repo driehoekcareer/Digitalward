@@ -235,233 +235,344 @@ body {
 }
 
 
-/* ——— ULTRON CORE DEFENSE ——— */
-.game-canvas {
-  position: fixed;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 12;
-  pointer-events: none;
-  touch-action: none;
-}
-
-.game-canvas.active {
-  pointer-events: auto;
-  cursor: crosshair;
-}
-
+/* ——— TRIAGULL API COMMAND CENTER ——— */
 .hud-subtitle {
   margin-top: 10px;
   font-size: 9px;
-  letter-spacing: 0.22em;
-  opacity: 0.62;
+  letter-spacing: 0.2em;
+  opacity: 0.58;
 }
 
-.game-stats {
-  top: 22px;
+.api-status {
+  top: 24px;
   right: 24px;
   display: flex;
+  align-items: center;
   gap: 8px;
-  align-items: stretch;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  max-width: min(620px, calc(100vw - 260px));
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 170, 48, 0.28);
+  background: rgba(12, 6, 0, 0.48);
+  backdrop-filter: blur(5px);
+  font-size: 9px;
+  letter-spacing: 0.16em;
 }
 
-.game-stats > div {
-  min-width: 88px;
-  padding: 8px 10px;
-  border: 1px solid rgba(255, 170, 48, 0.32);
-  background: rgba(12, 6, 0, 0.5);
-  backdrop-filter: blur(4px);
+.api-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #ffaa30;
+  box-shadow: 0 0 10px currentColor;
 }
 
-.game-stats span {
-  display: block;
-  margin-bottom: 3px;
-  font-size: 8px;
-  letter-spacing: 0.18em;
-  opacity: 0.6;
+.api-dot.online {
+  background: #68ff9f;
+  color: #68ff9f;
 }
 
-.game-stats strong {
-  display: block;
-  font-size: 14px;
-  letter-spacing: 0.06em;
-  color: #ffcc66;
-  text-shadow: 0 0 8px rgba(255, 170, 48, 0.65);
+.api-dot.offline {
+  background: #ff5d45;
+  color: #ff5d45;
 }
 
-.game-stats .shield-stat {
-  min-width: 120px;
+.api-dot.checking {
+  animation: apiPulse 1s ease-in-out infinite;
 }
 
-.shield-track {
-  width: 100%;
-  height: 6px;
-  margin-top: 8px;
-  border: 1px solid rgba(102, 221, 255, 0.45);
-  background: rgba(102, 221, 255, 0.08);
-  overflow: hidden;
+@keyframes apiPulse {
+  50% {
+    opacity: 0.35;
+  }
 }
 
-.shield-fill {
-  height: 100%;
-  background: #66ddff;
-  box-shadow: 0 0 10px rgba(102, 221, 255, 0.8);
-  transition: width 0.16s linear;
-}
-
-.game-card {
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: min(430px, calc(100vw - 32px));
-  padding: 24px;
-  border: 1px solid rgba(255, 170, 48, 0.42);
+.assistant-panel {
+  top: 82px;
+  right: 24px;
+  bottom: 92px;
+  width: min(470px, calc(100vw - 48px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgba(255, 170, 48, 0.35);
+  border-radius: 6px;
   background:
     linear-gradient(
-      135deg,
-      rgba(35, 17, 0, 0.86),
-      rgba(5, 3, 0, 0.82)
+      160deg,
+      rgba(20, 10, 0, 0.82),
+      rgba(4, 2, 0, 0.7)
     );
   backdrop-filter: blur(10px);
   box-shadow:
-    0 0 40px rgba(255, 135, 25, 0.14),
-    inset 0 0 30px rgba(255, 135, 25, 0.06);
-  text-align: left;
+    0 0 28px rgba(255, 140, 20, 0.08),
+    inset 0 0 22px rgba(255, 140, 20, 0.035);
 }
 
-.game-card::before,
-.game-card::after {
-  content: "";
-  position: absolute;
-  width: 34px;
-  height: 34px;
-  border-color: #ffaa30;
-  opacity: 0.72;
+.assistant-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.game-card::before {
-  top: -1px;
-  left: -1px;
-  border-top: 2px solid;
-  border-left: 2px solid;
+.assistant-kicker {
+  margin-bottom: 4px;
+  font-size: 8px;
+  letter-spacing: 0.22em;
+  opacity: 0.55;
 }
 
-.game-card::after {
-  right: -1px;
-  bottom: -1px;
-  border-right: 2px solid;
-  border-bottom: 2px solid;
-}
-
-.game-kicker {
-  margin-bottom: 8px;
-  font-size: 10px;
-  letter-spacing: 0.25em;
-  opacity: 0.65;
-}
-
-.game-name {
-  margin-bottom: 12px;
-  font-size: clamp(20px, 4vw, 30px);
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  line-height: 1.08;
-  color: #ffcc66;
-  text-shadow:
-    0 0 10px rgba(255, 170, 48, 0.85),
-    0 0 25px rgba(255, 120, 20, 0.35);
-}
-
-.game-copy {
-  max-width: 360px;
-  margin-bottom: 18px;
-  font-size: 12px;
-  line-height: 1.65;
-  letter-spacing: 0.045em;
-  color: rgba(255, 224, 180, 0.78);
-}
-
-.game-primary-btn,
-.game-secondary-btn {
-  min-height: 46px;
-  border-radius: 4px;
-  font-family: "Courier New", monospace;
-  font-weight: 800;
+.assistant-heading h1 {
+  font-size: 18px;
   letter-spacing: 0.12em;
+  color: #ffcc66;
+  text-shadow: 0 0 10px rgba(255, 170, 48, 0.5);
+}
+
+.voice-btn,
+.command-submit,
+.quick-commands button,
+.categories-grid button {
+  font-family: "Courier New", monospace;
+  color: #ffcc66;
+  border: 1px solid rgba(255, 170, 48, 0.4);
+  background: rgba(255, 145, 20, 0.08);
   cursor: pointer;
 }
 
-.game-primary-btn {
-  width: 100%;
-  padding: 0 16px;
-  border: 1px solid #ffba4a;
-  background: rgba(255, 145, 20, 0.16);
-  color: #ffcc66;
-  box-shadow:
-    0 0 18px rgba(255, 140, 20, 0.18),
-    inset 0 0 15px rgba(255, 140, 20, 0.12);
-}
-
-.game-primary-btn:hover {
-  background: rgba(255, 145, 20, 0.26);
-}
-
-.game-secondary-btn {
-  width: 100%;
-  margin-top: 8px;
-  padding: 0 16px;
-  border: 1px solid rgba(255, 170, 48, 0.28);
-  background: rgba(20, 10, 0, 0.4);
-  color: rgba(255, 204, 102, 0.72);
-}
-
-.game-mini {
-  margin-top: 10px;
-  font-size: 9px;
+.voice-btn {
+  min-width: 76px;
+  height: 38px;
+  padding: 0 10px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
   letter-spacing: 0.1em;
+}
+
+.voice-btn.listening {
+  border-color: #ff5d45;
+  color: #ff7b66;
+  box-shadow: 0 0 14px rgba(255, 90, 60, 0.28);
+}
+
+.voice-btn:disabled,
+.command-submit:disabled,
+.quick-commands button:disabled {
+  cursor: not-allowed;
   opacity: 0.45;
 }
 
-.gameover-card {
-  border-color: rgba(255, 80, 50, 0.5);
+.command-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
 }
 
-.hud-btn.danger {
-  border-color: rgba(255, 80, 50, 0.5);
+.triagull-command-input {
+  min-width: 0;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 170, 48, 0.32);
+  border-radius: 4px;
+  outline: none;
+  background: rgba(0, 0, 0, 0.45);
+  color: #ffe2a1;
+  font: 13px "Courier New", monospace;
+  caret-color: #ffaa30;
+}
+
+.triagull-command-input::placeholder {
+  color: rgba(255, 210, 145, 0.35);
+}
+
+.triagull-command-input:focus {
+  border-color: rgba(255, 204, 102, 0.8);
+  box-shadow: 0 0 0 1px rgba(255, 170, 48, 0.16);
+}
+
+.command-submit {
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.quick-commands {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.quick-commands button,
+.categories-grid button {
+  min-height: 30px;
+  padding: 5px 8px;
+  border-radius: 3px;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
+.assistant-results {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 170, 48, 0.32) transparent;
+}
+
+.assistant-empty,
+.assistant-error,
+.health-result {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 16px;
+  border: 1px solid rgba(255, 170, 48, 0.18);
+  background: rgba(0, 0, 0, 0.25);
+  font-size: 11px;
+  line-height: 1.55;
+  letter-spacing: 0.035em;
+}
+
+.assistant-empty span,
+.health-result span {
+  color: rgba(255, 224, 180, 0.68);
+}
+
+.assistant-error {
+  border-color: rgba(255, 80, 50, 0.34);
   color: #ff795f;
 }
 
-@media (max-width: 760px) {
-  .game-stats {
-    top: 72px;
+.results-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 9px;
+  padding: 0 2px;
+}
+
+.results-summary strong {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: #ffcc66;
+}
+
+.results-summary span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9px;
+  opacity: 0.5;
+}
+
+.job-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.job-card {
+  padding: 13px;
+  border: 1px solid rgba(255, 170, 48, 0.23);
+  border-radius: 4px;
+  background: rgba(7, 3, 0, 0.38);
+}
+
+.job-card.compact {
+  padding: 10px 11px;
+}
+
+.job-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.job-id {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  opacity: 0.45;
+}
+
+.job-card h2 {
+  font-size: 14px;
+  line-height: 1.25;
+  color: #ffd27a;
+}
+
+.job-category {
+  flex: 0 0 auto;
+  max-width: 120px;
+  padding: 4px 6px;
+  border: 1px solid rgba(255, 170, 48, 0.25);
+  border-radius: 3px;
+  font-size: 8px;
+  text-align: center;
+  opacity: 0.7;
+}
+
+.job-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 8px;
+  margin-top: 8px;
+}
+
+.job-meta span {
+  font-size: 9px;
+  color: rgba(255, 222, 170, 0.63);
+}
+
+.job-salary {
+  margin-top: 8px;
+  font-size: 10px;
+  color: #ffbf55;
+}
+
+.job-card p {
+  margin-top: 9px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: rgba(255, 226, 180, 0.67);
+}
+
+.job-requirements strong {
+  color: #ffcc66;
+}
+
+.categories-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+@media (max-width: 900px) {
+  .orb-root {
+    opacity: 0.78;
+  }
+
+  .assistant-panel {
+    top: 116px;
     left: 12px;
     right: 12px;
-    max-width: none;
-    justify-content: flex-start;
-    gap: 5px;
+    bottom: 92px;
+    width: auto;
   }
 
-  .game-stats > div {
-    min-width: 64px;
-    padding: 6px 7px;
-  }
-
-  .game-stats .shield-stat {
-    min-width: 92px;
-    flex: 1 1 92px;
-  }
-
-  .game-stats strong {
-    font-size: 12px;
-  }
-
-  .game-card {
-    top: 48%;
-    padding: 20px;
+  .api-status {
+    top: 72px;
+    left: 12px;
+    right: auto;
   }
 
   .hud-controls {
@@ -472,5 +583,40 @@ body {
   .camera-panel {
     width: 156px;
     height: 117px;
+  }
+
+  .hud-title {
+    left: 12px;
+    top: 16px;
+  }
+}
+
+@media (max-width: 560px) {
+  .assistant-panel {
+    padding: 12px;
+  }
+
+  .assistant-heading h1 {
+    font-size: 15px;
+  }
+
+  .command-form {
+    grid-template-columns: 1fr;
+  }
+
+  .command-submit {
+    width: 100%;
+  }
+
+  .voice-btn {
+    min-width: 64px;
+  }
+
+  .job-card-top {
+    flex-direction: column;
+  }
+
+  .job-category {
+    max-width: 100%;
   }
 }
